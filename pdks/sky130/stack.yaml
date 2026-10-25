@@ -1,0 +1,3 @@
+# SkyWater 130nm process layer stack definition
+# TODO: Define layer heights, materials, and thicknesses for Sky130 from public PDK documentation
+layers: []
