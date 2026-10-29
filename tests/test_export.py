@@ -1,12 +1,15 @@
-"""Unit tests for scene.json serialization and export."""
+"""Unit tests for scene.json serialization, export, and CLI."""
 
 import json
 from pathlib import Path
+import subprocess
+import sys
+import gdstk
 import pytest
 from shapely.geometry import box
 import trimesh
 
-from core.export import export_scene
+from core.export import export_scene, main
 from core.stack.extrude import extrude
 from core.stack.layer_stack import Layer
 
@@ -136,3 +139,80 @@ def test_export_scene_rounding_6_decimals(tmp_path: Path) -> None:
 
     v = data["layers"][0]["vertices"][0]
     assert v == [0.123457, 1.987654, 2.555556]
+
+
+def test_cli_end_to_end(tmp_path: Path) -> None:
+    """Test CLI python -m core.export end-to-end with a generated tiny GDS."""
+    gds_path = tmp_path / "tiny.gds"
+    lib = gdstk.Library(name="TINY_LIB")
+    cell = lib.new_cell("TOP")
+    rect1 = gdstk.rectangle((0, 0), (10, 20), layer=66, datatype=20)
+    rect2 = gdstk.rectangle((5, 5), (15, 25), layer=68, datatype=20)
+    cell.add(rect1, rect2)
+    lib.write_gds(str(gds_path))
+
+    stack_yaml = tmp_path / "stack.yaml"
+    stack_content = """
+layers:
+  - name: poly
+    gds: [66, 20]
+    z: 0.2
+    thickness: 0.18
+    material: polysilicon
+    approx: true
+  - name: met1
+    gds: [68, 20]
+    z: 1.0
+    thickness: 0.35
+    material: metal1
+    approx: true
+"""
+    stack_yaml.write_text(stack_content, encoding="utf-8")
+
+    out_json = tmp_path / "exported_scene.json"
+
+    # Invoke CLI via subprocess
+    cmd = [
+        sys.executable,
+        "-m",
+        "core.export",
+        str(gds_path),
+        str(stack_yaml),
+        str(out_json),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    assert "Exported scene with 2 layer(s)" in result.stdout
+
+    # Validate generated scene.json
+    assert out_json.is_file()
+    with open(out_json, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["version"] == 1
+    assert data["units"] == "um"
+    assert len(data["layers"]) == 2
+    layer_names = [l["name"] for l in data["layers"]]
+    assert layer_names == ["poly", "met1"]
+
+    for l in data["layers"]:
+        assert len(l["vertices"]) > 0
+        assert len(l["faces"]) > 0
+        assert l["approx"] is True
+
+    # Check bounds encompass both rectangles
+    bounds = data["bounds"]
+    assert pytest.approx(bounds["min"][0]) == 0.0
+    assert pytest.approx(bounds["min"][1]) == 0.0
+    assert pytest.approx(bounds["min"][2]) == 0.2
+    assert pytest.approx(bounds["max"][0]) == 15.0
+    assert pytest.approx(bounds["max"][1]) == 25.0
+    assert pytest.approx(bounds["max"][2]) == 1.35
+
+
+def test_cli_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI usage output and exit code when arguments are missing."""
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "Usage: python -m core.export" in captured.out
