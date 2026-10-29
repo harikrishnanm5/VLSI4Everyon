@@ -1,3 +1,32 @@
 # SkyWater 130nm process layer stack definition
-# TODO: Define layer heights, materials, and thicknesses for Sky130 from public PDK documentation
-layers: []
+# Placeholder vertical offsets, thicknesses, and materials (marked approx: true).
+# Values must be verified against official SkyWater SKY130 documentation.
+
+layers:
+  - name: nwell
+    gds: [64, 20]
+    z: 0.0
+    thickness: 1.0
+    material: silicon
+    approx: true
+
+  - name: poly
+    gds: [66, 20]
+    z: 0.0
+    thickness: 0.2
+    material: polysilicon
+    approx: true
+
+  - name: li1
+    gds: [67, 20]
+    z: 0.5
+    thickness: 0.1
+    material: local_interconnect
+    approx: true
+
+  - name: met1
+    gds: [68, 20]
+    z: 1.0
+    thickness: 0.35
+    material: metal1
+    approx: true
